@@ -1,0 +1,678 @@
+#define ___NLAF
+#include <gfx.h>
+#include <key.h>
+#include <input.h>
+#include <io.h>
+#include <fcntl.h>
+#include <iostream.h>
+#include <process.h>
+#include <alloc.h>
+#include <conio.h>
+#include <stdlib.h>
+#include <sys\stat.h>
+
+#include <packer.h>
+
+extern "C"
+{
+	void guenwhyvar(char far *scene);
+	void inicprint(char far *);
+	void pnumber(int,int,int,int,int);
+	void ptext(int,int,char far *);
+     int shadenumprint(int,int,int,int,int,int,int);
+}
+
+class game
+{
+	long level,stage;
+	int pos,crsrpos,othing,step,plus;
+	unsigned *codes;
+	char *gfx_name,*scene_name;
+	char *gfx,*scene,*cset,*names;
+	void ferr(char *);
+	void rmxerr();
+	void nem();
+	void loadscene();
+	void savescene();
+	void copyscene(long,long);
+	void swapscene(long,long);
+	void loadgfx();
+	void loadcset();
+	void loadnames();
+	void savenames();
+	void delnames();
+	void showscape(int);
+	void delscene();
+	void crsroff() { scene[crsrpos]=othing; };
+	void crsron() { othing=scene[crsrpos]; scene[crsrpos]=93; };
+	void crsrleft();
+	void crsrright();
+	void showln(int);
+	void sn();
+	public:
+	int edit();
+	game();
+	~game();
+};
+
+game::game()
+{
+	setgfxmode(19);
+	if((gfx=(char *)farmalloc(65000))==NULL)
+		nem();
+	if((scene=(char *)farmalloc(7800))==NULL)
+		nem();
+	if((names=(char *)farmalloc(4000))==NULL)
+		nem();
+	if((codes=(unsigned *)farmalloc(200))==NULL)
+		nem();
+	level=stage=pos=crsrpos=othing=0;
+	step=plus=1;
+	gfx_name="magidash.gfx";
+	scene_name="magidash.scn";
+	loadgfx();
+	loadscene();
+	loadnames();
+//	loadcset();
+	inicprint(gfx+1600);
+	showscape(0);
+}
+
+game::~game()
+{
+	farfree(gfx);
+	farfree(scene);
+//	farfree(cset);
+	farfree(names);
+	setgfxmode(2);
+	cout << "Bye !\n";
+}
+
+void game::nem()
+{
+	setgfxmode(2);
+	cout << "Memory allocation error !\n"
+	"Program terminated !";
+	exit(0);
+}
+
+void game::ferr(char *err_file)
+{
+	setgfxmode(2);
+	cout << "Error while opening file : " << err_file << " !"
+	"\nProgram terminated !";
+	exit(0);
+}
+
+void game::rmxerr()
+{
+	setgfxmode(2);
+	cout << "The decruncher encountered with a fatal error !\n";
+	exit(0);
+}
+
+void game::loadgfx()
+{
+	int fl=open(gfx_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(gfx_name);
+//	lseek(fl,level*64768,SEEK_SET);
+//	read(fl,gfx,64768);
+	if(!loadrmx(fl,gfx,"graphics"))
+		rmxerr();
+	close(fl);
+	set256palette(0,256,gfx+64000);
+}
+void game::loadcset()
+{
+	int fl=open(gfx_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(gfx_name);
+//	lseek(fl,65000,SEEK_SET);
+//	read(fl,cset,64000);
+	if(!loadrmx(fl,cset,"charset"))
+		rmxerr();
+	close(fl);
+}
+
+void game::loadnames()
+{
+	int fl=open(scene_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	for(long i=0;i<100;i++)
+	{
+		lseek(fl,i*2600+2500,SEEK_SET);
+		read(fl,names+i*40,40);
+		codes[i]=~(((unsigned *)names)[i*20]+1995);
+	}
+	close(fl);
+}
+void game::savenames()
+{
+	int fl=open(scene_name,O_WRONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	for(long i=0;i<100;i++)
+	{
+		lseek(fl,i*2600+2500,SEEK_SET);
+		((unsigned *)names)[i*20]=(~codes[i])-1995;
+		write(fl,names+i*40,40);
+	}
+	close(fl);
+}
+void game::delnames()
+{
+	char allname[]="no code     "
+		"no name defined                    ";
+	allname[10]=0;
+	allname[35]=0;
+	int fl=open(scene_name,O_WRONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	for(long i=0;i<100;i++)
+	{
+		lseek(fl,i*2600+2500,SEEK_SET);
+		write(fl,allname,40);
+	}
+	close(fl);
+}
+
+extern void protect(char far *);
+extern void decode(char far *);
+
+void game::loadscene()
+{
+	int fl=open(scene_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	lseek(fl,stage*2600,SEEK_SET);
+	read(fl,scene,2600);
+	close(fl);
+	decode(scene);
+	othing=scene[crsrpos];
+}
+void game::savescene()
+{
+	scene[2570]=scene[2571]=scene[2576]=scene[2575]=0;
+	char *fn="scenexx.raw";
+	fn[5]=(stage/10)+'0';
+	fn[6]=(stage%10)+'0';
+	int fh=open(fn,O_WRONLY|O_BINARY|O_TRUNC|O_CREAT,S_IWRITE|S_IREAD);
+	write(fh,scene,2600);
+	close(fh);
+/*	protect(scene);
+	int fl=open(scene_name,O_WRONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	lseek(fl,stage*2600,SEEK_SET);
+	write(fl,scene,2600);
+	close(fl);
+	loadscene();  */
+}
+void game::copyscene(long from,long to)
+{
+	int fl=open(scene_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	lseek(fl,from*2600,SEEK_SET);
+	read(fl,scene+2600,2600);
+	close(fl);
+	fl=open(scene_name,O_WRONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	lseek(fl,to*2600,SEEK_SET);
+	write(fl,scene+2600,2600);
+	close(fl);
+}
+void game::swapscene(long p1,long p2)
+{
+	int fl=open(scene_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	lseek(fl,p1*2600,SEEK_SET);
+	read(fl,scene+2600,2600);
+	close(fl);
+	fl=open(scene_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	lseek(fl,p2*2600,SEEK_SET);
+	read(fl,scene+5200,2600);
+	close(fl);
+	fl=open(scene_name,O_WRONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	lseek(fl,p1*2600,SEEK_SET);
+	write(fl,scene+5200,2600);
+	close(fl);
+	fl=open(scene_name,O_WRONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	lseek(fl,p2*2600,SEEK_SET);
+	write(fl,scene+2600,2600);
+	close(fl);
+}
+
+void game::showscape(int pos)
+{
+	char *pscene=scene,*pgfx=gfx;
+	asm {
+		push ds
+		mov ax,0xa000
+		mov es,ax
+		xor di,di
+		lds si,pscene
+		add si,pos
+		xor ah,ah
+		mov cx,11 }
+	cikl: asm {
+		push cx
+		mov cx,20 }
+	cikl2: asm {
+		push cx
+		mov al,ds:[si]
+		inc si
+		xor ah,ah
+		sal ax,4
+		push ds
+		push si
+		lds si,pgfx
+		add si,ax
+		push di
+		mov bl,16 }
+	cikl3: asm {
+		mov cl,4
+		rep movsd
+		add di,304
+		add si,3840-16
+		dec bl
+		jnz cikl3
+		pop di
+		add di,16
+		pop si
+		pop ds
+		pop cx
+		loop cikl2
+		add si,30    // xs-20
+		add di,4800
+		pop cx
+		loop cikl
+		pop ds
+	}
+}
+
+void game::delscene()
+{
+	for(int i=0;i<2500;i++)
+	{
+		scene[i]=1;
+	}
+	for(i=0;i<50;i++)
+	{
+		scene[i]=scene[i+2450]=scene[i*50]=scene[i*50+49]=20;
+	}
+	scene[2572]=scene[2573]=0;
+	pnumber(17,180,((int *)scene)[1286],3,0);
+}
+
+void game::crsrleft()
+{
+	int cpx=crsrpos%50,px=pos%50;
+	if(!cpx)
+		return;
+	crsrpos--;
+	if(cpx-px==5&&px)
+		pos--;
+}
+void game::crsrright()
+{
+	int cpx=crsrpos%50,px=pos%50;
+	if(cpx==49)
+		return;
+	crsrpos++;
+	if(cpx-px==14&&px!=30)
+		pos++;
+}
+
+void game::showln(int from)
+{
+	gotoxy(1,1);
+	for(int i=from;i<from+12;i++)
+	{
+		cout << "   Level " << i << " name : " << names+i*40+12 << "                              ";
+		cout << "\n   Level " << i << " code : " << codes[i] << "            \n";
+	}
+}
+void game::sn()
+{
+	setgfxmode(2);
+	_setcursortype(_NOCURSOR);
+	int lp=stage,from,first=1;
+	enum act { nothing,copy,swap };
+	act action=nothing;
+	showln(lp);
+	int c=0;
+	while(c!=K_ESC&&c!='g')
+	{
+		if(!first)
+		{
+			while(!bioskey(1));
+			c=getkey();
+			if(bioskey(1))
+				getkey();
+			if(bioskey(1))
+				getkey();
+		}
+		else
+		{
+			first=0;
+		}
+		switch(c)
+		{
+			case 'n':
+			{
+				clrscr();
+				cout << "New name for level " << lp << " : ";
+				input(names+lp*40+12,27);
+				break;
+			}
+			case 'c':
+			{
+				clrscr();
+				cout << "New code for level " << lp << " : ";
+				input(names,11);
+				codes[lp]=atoi(names);
+				break;
+			}
+			case K_F2:
+				savenames();
+				break;
+			case K_F3:
+				loadnames();
+				break;
+			case 'g':
+				stage=lp;
+				loadscene();
+				break;
+			case 't':
+				from=lp;
+				action=copy;
+				gotoxy(50,25);
+				cout << "COPY FROM : " << lp << ' ';
+				break;
+			case 's':
+				from=lp;
+				action=swap;
+				gotoxy(50,25);
+				cout << "SWAP WITH : " << lp << ' ';
+				break;
+			case K_INS:
+			{
+				int cf=from*40,ct=lp*40;
+				switch(action)
+				{
+					case nothing:
+						break;
+					case copy:
+					{
+						for(int i=0;i<40;i++)
+						{
+							names[ct+i]=names[cf+i];
+						}
+						copyscene(from,lp);
+						loadscene();
+						break;
+					}
+					case swap:
+					{
+						char t;
+						for(int i=0;i<40;i++)
+						{
+							t=names[ct+i];
+							names[ct+i]=names[cf+i];
+							names[cf+i]=t;
+						}
+						swapscene(from,lp);
+						loadscene();
+					}
+				}
+				break;
+			}
+			case K_DOWN:
+				lp++;
+				if(lp>99)
+					lp=99;
+				break;
+			case K_UP:
+				lp--;
+				if(lp<0)
+					lp=0;
+				break;
+			case K_PGUP:
+				lp-=12;
+				if(lp<0)
+					lp=0;
+				break;
+			case K_PGDN:
+				lp+=12;
+				if(lp>99)
+					lp=99;
+				break;
+		}
+		if(lp<6)
+		{
+			showln(0);
+			gotoxy(1,(lp<<1)+1);
+		}
+		else
+		{
+			if(lp>94)
+			{
+				showln(88);
+				gotoxy(1,((lp-87)<<1)-1);
+			}
+			else
+			{
+				showln(lp-6);
+				gotoxy(1,13);
+			}
+		}
+		cout << ">>>";
+	}
+	_setcursortype(_NORMALCURSOR);
+	setgfxmode(19);
+	set256palette(0,256,gfx+64000);
+}
+
+int game::edit()
+{
+	static char abc[]={ 6,7,21,22,48,19,0,1,0,0,5,31,29,23,52,13,24,20,
+		0,0,0,0,0,0,0,0,32,36,40,44 };
+	static char abcbord[]={ 6,12,21,22,51,19,0,4,0,0,5,31,30,23,55,17,28,20,
+		0,0,0,0,0,0,0,0,35,39,43,47 };
+	static char etab[]={ 0,0,0,0,0,0,1,0,0,0,
+		0,0,0,9,9,0,0,40,40,0,
+		0,0,0,0,0,0,0,0,0,0,
+		0,0,9,9,9,9,0,0,0,0,
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
+	static int scut=0;
+	K_WAG
+	crsroff();
+	switch(c)
+	{
+		case 27:
+			return 0;
+		case '+':
+			if(stage==100)
+				break;
+			stage++;
+			loadscene();
+			break;
+		case '-':
+			if(!stage)
+				break;
+			stage--;
+			loadscene();
+			break;
+		case K_F2:
+			((int *)(scene+5))[1286]=((int *)scene)[1286];
+			savescene();
+			break;
+		case K_F3:
+			loadscene();
+			break;
+		case K_DEL:
+			delscene();
+			break;
+		case K_F5:
+			plus=(plus ? 0 : 1);
+			break;
+		case K_BACK:
+			scene[crsrpos]=scene[crsrpos-1]=scene[crsrpos+1]=
+				scene[crsrpos-50]=scene[crsrpos-51]=scene[crsrpos-49]=
+				scene[crsrpos+50]=scene[crsrpos+51]=scene[crsrpos+49]=0;
+			break;
+		case K_F10:
+		{
+			int cpa=crsrpos-crsrpos%50;
+			for(int i=1;i<49;i++)
+				scene[i+cpa]=0;
+		}
+		case '=':
+			scut=scene[crsrpos];
+			break;
+		case K_ENTER:
+			scene[crsrpos]=scut;
+			if(step)
+			{
+				crsrright();
+			}
+			break;
+		case K_INS:
+		case '\\':
+			step=(step ? 0 : 1);
+			break;
+		case K_F6:
+			sn();
+			break;
+		case K_UP:
+			if(crsrpos<50)
+				break;
+			crsrpos-=50;
+			if(crsrpos-pos<205&&pos>=50)
+				pos-=50;
+			break;
+		case K_DOWN:
+			if(crsrpos>2450)
+				break;
+			crsrpos+=50;
+			if(crsrpos-pos>=355&&pos<1950)
+				pos+=50;
+			break;
+		case K_LEFT:
+			crsrleft();
+			break;
+		case K_RIGHT:
+			crsrright();
+			break;
+		case K_HOME:
+			crsrpos-=crsrpos%50;
+			pos-=pos%50;
+			break;
+		case K_END:
+			crsrpos+=49-crsrpos%50;
+			pos+=30-pos%50;
+			break;
+		case K_PGUP:
+			crsrpos%=50;
+			pos%=50;
+			break;
+		case K_PGDN:
+			crsrpos=2450+crsrpos%50;
+			pos=1950+pos%50;
+			break;
+		case ',':
+			((int *)scene)[1286]++;
+			shadenumprint(17,180,((int *)scene)[1286],0,0,0,4);
+			break;
+		case '.':
+			if(((int *)scene)[1286])
+				((int *)scene)[1286]--;
+			shadenumprint(17,180,((int *)scene)[1286],0,0,0,4);
+			break;
+		case '<':
+			((int *)scene)[1286]+=10;
+			shadenumprint(17,180,((int *)scene)[1286],0,0,0,4);
+			break;
+		case '>':
+			if(((int *)scene)[1286]>=10)
+				((int *)scene)[1286]-=10;
+			else
+				((int *)scene)[1286]=0;
+			shadenumprint(17,180,((int *)scene)[1286],0,0,0,4);
+			break;
+		case '*':
+			crsrpos-=(crsrpos%50)-25;
+			pos-=(pos%50)-16;
+			break;
+		case '/':
+		case '?':
+		{
+			int summ=0;
+			for(int i=0;i<2500;i++)
+			{
+				summ+=etab[scene[i]];
+			}
+			((int *)scene)[1286]=summ;
+			shadenumprint(17,180,((int *)scene)[1286],0,0,0,4);
+			break;
+		}
+		case ' ':
+			scene[crsrpos]=0;
+			if(step)
+			{
+				crsrright();
+			}
+			break;
+		default:
+		{
+			if('1'<=c&&c<='4')
+			{
+				c-='1'-'z'-1;
+			}
+			if('a'<=c&&c<='z'+4)
+			{
+				c-='a';
+				if(!abc[c])
+				{
+					break;
+				}
+				if(abc[c]<=scene[crsrpos]&&scene[crsrpos]<=abcbord[c]&&plus)
+				{
+					scene[crsrpos]++;
+					if(scene[crsrpos]>abcbord[c])
+					{
+						scene[crsrpos]=abc[c];
+					}
+				}
+				else
+				{
+					scene[crsrpos]=abc[c];
+				}
+				if(step)
+				{
+					crsrright();
+				}
+			}
+		}
+	}
+	crsron();
+	showscape(pos);
+	return 1;
+}
+
+void main()
+{
+	game md;
+	while(md.edit());
+}

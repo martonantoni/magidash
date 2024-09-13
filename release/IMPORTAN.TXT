@@ -1,0 +1,22 @@
+IMPORTANT:
+
+Please use the default keyboard configuration!
+I discourage you to use the crsr keys for movement-control. Sorry!
+
+Here is a good control setting:
+
+Player #1:
+ 
+       5
+     1   3  (On the num.keypad)  and RSHIFT
+       2    
+ 
+Player #2:
+
+	r
+      d   g      and    tab
+        f
+
+
+
+									Remetix

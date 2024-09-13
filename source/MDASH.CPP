@@ -1,0 +1,1986 @@
+#define ___NLAF
+#define K_LOOP 0x1
+#define K_LOOP2 0x1
+#define K_NOBUFFER
+//#define K_SYNC
+#include <gfx.h>
+#include <key.h>
+#include <blockmov.h>
+#include <io.h>
+#include <fcntl.h>
+#include <iostream.h>
+#include <process.h>
+#include <alloc.h>
+#include <sys\stat.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include <conio.h> 		// This for test - getch
+#include <packer.h>
+#include <dos.h>
+#include <stdio.h>
+#include <hufpack.h>
+#define S_N
+#include "stats.h"
+#include <sound.h>
+//#include <mod.h>
+extern unsigned _stklen=20000u;
+int SB=1,purge=0,cheaton=0;
+char keyready=1;
+
+extern "C"
+{
+	void guenwhyvar(char far *);
+	void keyirq(char far *,char far *);
+	void inicprint(char far *);
+	void pnumber(int,int,int,int,int);
+	void ptext(int,int,char far *);
+	int shadeprint(int,int,char far *,int,int);
+	int *advshadeprint(int,char far *,char far *,int,char far *);
+	void shade8print(int,int,char far *,int,int);
+	void shade8numprint(int,int,int,int,int,int,int);
+	int shadenumprint(int,int,int,int,int,int,int);
+	void setprintdestination(char far *dest=NULL);
+	void ShowScape(int,int);
+	void ShowBottomMarble(char far *);
+	void StoreBottomMarble();
+	void RestoreMarble();
+	void ShowMarble();
+	void DashASM(void far *);
+	void ScrollerASM();
+	void SetVars(char far *,char far *,char far *,char far *,char far *,int);
+	void Logo2Pic(char far *);
+	void OldStyleStarfield(void far *,char far *,int,int);
+	void MarbleCut();
+	void CorrectSFX(char far *,unsigned);
+	void PutOne(int,int,int);
+	void PutBullet(int,int,char far *);
+//	void initshoot();
+//	void shotdownshoot();
+//	int ShootTmr1,ShootTmr2,ShootX1,Shootx2,ShootY1,ShootY2;
+};
+
+int NoIntro=0,NoScroll=0,FreeMem=0,soundtest=0;
+
+#define SFX_NUM 7
+int sfx_speed[]={ 11000,5000,5000,5000,11000,22000,8000 };
+
+class game : stats
+{
+	long level,stage,FarCoreLeft2;
+	int pos,crsrpos,pos2,crsrpos2,oneplayer,comode;
+	int score,score2,treasure,treasure2,lives,lives2,victory,victory2;
+	int oscore,oscore2,otreasure,otreasure2,dead,dead2;
+	int ocp1,ocp2,op1,op2,irqmask;
+	int Shoot1,ShootPhaseTmr1,ShootTmr1,ShootPos1;
+	int ShootX1,ShootY1,ShootVX1,ShootVY1,ShootXS1;
+	int Shoot2,ShootPhaseTmr2,ShootTmr2,ShootPos2;
+	int ShootX2,ShootY2,ShootVX2,ShootVY2,ShootXS2;
+	int *cfg;
+	unsigned *codes,sfx_l[SFX_NUM];
+	char *scrtab;
+	char *gfx_name,*scene_name,*config_name,*wbuff;
+	char *gfx,*scene,*cset,*names,*gopic;
+	char *t,*t2,*win,*bm;
+	char *scrtxt,*coords;
+	char *txtpic;
+	char *sfx[SFX_NUM],*sfx_name[SFX_NUM];
+	char ready;
+	void ferr(char *);
+	void rmxerr(char *);
+	void nem();
+	void loadscene();
+	void loadgfx();
+	void loadgogfx();
+	void loadlogo();
+	void loadtxtpic();
+	void loadcset();
+	void loadnames();
+	void loadconfig();
+	void newconfig();
+	void saveconfig();
+	void showscape(int,int pos2=0) { 	ShowScape(pos,pos2); };
+	void crsrset();
+	void crsrleft();
+	void crsrright();
+	void crsrup();
+	void crsrdown();
+	void wait();
+	void newlevel();
+	void error(char *);
+	void leveldone();
+	void level2done(int);
+	void showmarble() {	ShowMarble(); };
+	void showbottommarble(int,int store=0);
+	void restoremarble() { RestoreMarble(); };
+	void storebottommarble() { StoreBottomMarble(); };
+	void scroll();
+	void makesfdata();
+	void startplay(int noload=0);
+	void won(int);
+	void suicide(int p);
+	int opsel(char *,int);
+	void setup();
+	int getpk();
+	void getkeys(int);
+	int typecode();
+	void cheats(char *);
+	int die();
+	int p2die(int,char *);
+	void soundfx(int,int stop=0);
+	void freecoords() { farfree(coords); };
+	void freetxtpic() { farfree(txtpic); };
+	void setexternvars() { SetVars(scene,gfx,win,wbuff,bm,oneplayer); };
+	void SHOOT(int);
+	void shoot();
+	void showbullets();
+	public:
+	int dash();
+	int credits();
+	game();
+	~game();
+};
+
+int boxtab[9]={ -51,-50,-49,-1,0,1,49,50,51 };
+
+game::game()
+{
+	statsc();
+	sfx_name[0]="come_and_get_it";
+	sfx_name[1]="boom1";
+	sfx_name[2]="boom2";
+	sfx_name[3]="boom3";
+	sfx_name[4]="suicide";
+	sfx_name[5]="yes";
+	sfx_name[6]="haha";
+	unsigned long x=324324,a=34456,sec=263865,b=32432,c=234344,d=34446;
+	if((gfx=(char *)farmalloc(64768))==NULL)
+		nem();
+	if((wbuff=(char *)farmalloc(64000))==NULL)
+		nem();
+	if((scene=(char *)farmalloc(2600))==NULL)
+		nem();
+	if((t2=(char *)farmalloc(1100))==NULL)
+		nem();
+	if((names=(char *)farmalloc(4000))==NULL)
+		nem();
+	if((win=(char *)farmalloc(250))==NULL)
+		nem();
+	if((scrtab=(char *)farmalloc(400))==NULL)
+		nem();
+	if((scrtxt=(char *)farmalloc(2000))==NULL)
+		nem();
+	if((bm=(char *)farmalloc(16000))==NULL)
+		nem();
+	if((cfg=(int *)farmalloc(50))==NULL)
+		nem();
+	if((codes=(unsigned *)farmalloc(100*sizeof(unsigned)))==NULL)
+		nem();
+	if(SB)
+	{
+			int fh=open("sounds.rhx",O_RDONLY|O_BINARY);
+			if(fh==-1)
+			{
+				setgfxmode(3);
+				cout << "Unable to open sounds.rhx !";
+				RemoveIrq();
+				exit(0);
+			}
+		for(int j=0;j<SFX_NUM;j++)
+		{
+				sfx_l[j]=rhxlength(fh,sfx_name[j]);
+			if((sfx[j]=(char *)farmalloc(sfx_l[j]))==NULL)
+				nem();
+			if(!loadrhx(fh,sfx[j],sfx_name[j]))
+			{
+				setgfxmode(3);
+				cout << "Depacking error : " << sfx_name[j];
+				RemoveIrq();
+				exit(0);
+			}
+			if(j!=4&&j!=5)
+			CorrectSFX(sfx[j],sfx_l[j]);
+		}
+			close(fh);
+	}
+	level=stage=0;
+	oneplayer=0;
+	gfx_name="magidash.gfx";
+	scene_name="magidash.scn";
+	config_name="magidash.cfg";
+	loadconfig();
+	setgfxmode(19);
+	loadgfx();
+	loadscene();
+	loadnames();
+	inicprint(gfx+1600);
+	char stxt[]="                        "
+	"Yeah !   here is remetix with something new : a dash game with "
+	"the fantastic two player mode !!!   this is really cool !  "
+	"some instructions : toggle pause on by 'p' and off by space."
+	" suicide : push up & (player one :) f10 or (player two :) f1."
+	" in two player mode after you died : press fire to restart your"
+	" figure; press right & left to see your starting point; press "
+	"up & down to do the same plus something extra precautions "
+	"(this costs you 100 "
+	"points). Again in two player mode : you get 500 points, when the other"
+	" player dies; a new life costs 750 points, but you get it only if "
+	"you have 1000 points !  in one player mode you don't get any extra "
+	"lives "
+	"unless you have died - then one life costs 750 points."
+	"     -------    "
+
+	for(int i=0;i<21;i++)
+		scrtab[i]=scrtab[319-i]=0;
+	for(;i<48;i++)
+		scrtab[i]=scrtab[319-i]=i>>4;
+	for(;i<320-48;i++)
+		scrtab[i]=3;
+	for(i=0;stxt[i]!='@';i++)
+	{
+		sec-=stxt[i]*3;
+	}
+/*	if(sec)
+	{
+		setgfxmode(3);
+		cout << "Grrrrrrr ! My text has been modified !!!\n"
+		"Remember: only LAMERS do such things !!!\n\n";
+		exit(0);
+	}  */
+	for(i=0;stxt[i-1]!='@';i++)
+		scrtxt[i]=stxt[i];
+	char txt[]={ 1,9,9,4,255 };       // for ?????!!!!!
+	t2[500]=0;
+//	keyirq(t2,&keyready);
+	setexternvars(); // I hope that everything is allocated ;-)
+/*	if(sec)
+	{
+		for(;;);
+	} */
+	int t;
+	ready=1;
+	asm {
+		in	al,0x21
+		xor	ah,ah
+		or	al,2
+		out	0x21,al
+		mov	t,ax
+	}
+	irqmask=t;
+}
+
+game::~game()
+{
+	t2[500]=1;
+	asm {
+		in	al,0x21
+		and	al,11111101b
+		out	0x21,al
+	}
+//	keyirq(t2,&keyready);
+	long x=farcoreleft();
+	farfree(gfx);
+	farfree(scene);
+	farfree(win);
+	farfree(t2);
+	farfree(names);
+	farfree(scrtab);
+	farfree(scrtxt);
+	farfree(bm);
+	farfree(wbuff);
+	farfree(cfg);
+	farfree(codes);
+	if(SB)
+	{
+		for(int i=0;i<SFX_NUM;i++)
+			farfree(sfx[i]);
+	}
+	setgfxmode(3);
+	if(FreeMem)
+		cout << "farcoreleft() = " << x << "\n" << "farcoreleft() = "
+			<< FarCoreLeft2 << "    - in function credits()\n";
+	cout << "IRQMASK = " << irqmask << " !\n";
+	cout << "Bye !\n\n\n";
+	cout << "Read the scroll for informations about MAGIDASH !\n\n";
+	cout << "Feel free to contact me : remetix@hal2000.hal.vein.hu\n"
+		"\n\n";
+}
+
+void game::error(char *err_msg)
+{
+	t2[500]=1;
+	keyirq(t2,&keyready);
+	farfree(gfx);
+	farfree(cset);
+	farfree(scene);
+	farfree(t2);
+	setgfxmode(3);
+	cout << err_msg;
+	exit(0);
+}
+
+void game::nem()
+{
+	setgfxmode(3);
+	cout << "Memory allocation error !\n"
+	"Program terminated !";
+	if(SB)
+		RemoveIrq();
+	exit(0);
+}
+
+void game::ferr(char *err_file)
+{
+	setgfxmode(3);
+	cout << "Error while opening file : " << err_file << " !"
+	"\nProgram terminated !";
+	if(SB)
+		RemoveIrq();
+	exit(0);
+}
+
+void game::rmxerr(char *err_file)
+{
+	setgfxmode(3);
+	cout << "Decruncher encountered an error in " << err_file << " !";
+	if(SB)
+		RemoveIrq();
+	exit(0);
+}
+
+void game::loadgfx()
+{
+	int fl=open(gfx_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(gfx_name);
+	lseek(fl,level*64768,SEEK_SET);
+	if(!loadrmx(fl,gfx,"graphics"))
+		rmxerr(gfx_name);
+	close(fl);
+	set256palette(0,256,gfx+64000);
+}
+void game::loadgogfx()
+{
+	int fl=open(gfx_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(gfx_name);
+	if(!loadrmx(fl,gfx,"game_over.pic"))
+		rmxerr(gfx_name);
+	close(fl);
+}
+void game::loadlogo()
+{
+	int fl=open(gfx_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(gfx_name);
+	if(!loadrmx(fl,wbuff,"mainlogo"))
+		rmxerr(gfx_name);
+	close(fl);
+}
+void game::loadtxtpic()
+{
+	if((txtpic=(char *)farmalloc(64000))==NULL)
+		nem();
+	int fl=open(gfx_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(gfx_name);
+	if(!loadrmx(fl,txtpic,"fire_texts"))
+		rmxerr(gfx_name);
+	close(fl);
+}
+void game::loadcset()
+{
+	int fl=open(gfx_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(gfx_name);
+	if(!loadrmx(fl,cset,"charset"))
+		rmxerr(gfx_name);
+	close(fl);
+}
+
+void game::loadconfig()
+{
+	int fl=open(config_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+	{
+		newconfig();
+		return;
+	}
+	read(fl,cfg,24);
+	close(fl);
+	if(*(char *)cfg!=76||((char *)cfg)[1]!=94)
+	{
+		close(fl);
+		newconfig();
+	}
+}
+
+void game::newconfig()
+{
+	cout << "\n" << config_name << " file is not found or unvalid !"
+	"\nEstabilishing default configuration...";
+	((char *)cfg)[0]=76;
+	((char *)cfg)[1]=94;
+	cfg[1]=K_UP;
+	cfg[2]=K_RIGHT;
+	cfg[3]=K_DOWN;
+	cfg[4]=K_LEFT;
+	cfg[5]=K_RSHIFT;
+	cfg[6]='r';
+	cfg[7]='g';
+	cfg[8]='f';
+	cfg[9]='d';
+	cfg[10]=K_TAB;
+	cfg[11]=7;
+	remove(config_name);
+	int fl=open(config_name,O_WRONLY|O_BINARY|O_CREAT,S_IREAD|S_IWRITE);
+	if(fl==-1)
+		ferr(config_name);
+	write(fl,cfg,24);
+	close(fl);
+}
+
+void game::saveconfig()
+{
+	int fl=open(config_name,O_WRONLY|O_BINARY);
+	if(fl==-1)
+		ferr(config_name);
+	write(fl,cfg,24);
+	close(fl);
+}
+
+void game::loadnames()
+{
+	int fl=open(scene_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	for(long i=0;i<100;i++)
+	{
+		lseek(fl,i*2600+2500,SEEK_SET);
+		read(fl,names+i*40,40);
+		codes[i]=((unsigned *)names)[i*20];
+	}
+	close(fl);
+}
+
+extern void decode(char far *);
+
+void game::loadscene()
+{
+	int fl=open(scene_name,O_RDONLY|O_BINARY);
+	if(fl==-1)
+		ferr(scene_name);
+	lseek(fl,stage*2600,SEEK_SET);
+	read(fl,scene,2600);
+	close(fl);
+	decode(scene);
+}
+
+void game::soundfx(int s,int stop)
+{
+	static int priortab[]={ 2,0,0,0,9,10,8 };
+	static int lastprior=0;
+	if(purge)
+	{
+			PurgeQueue();
+			ResetDSP();
+			ready=1;
+	}
+	int prior=priortab[s];
+	if(!SB)
+		return;
+	if(SBused)
+	{
+		if(lastprior>prior)
+			return;
+		if(stop||lastprior<prior)
+		{
+			PurgeQueue();
+			ResetDSP();
+			ready=1;
+		}
+		else
+		{
+			return;
+		}
+	}
+	lastprior=prior;
+	ready=0;
+	static int testcol=20;
+	if(soundtest)
+	{
+		set256palette(0,testcol,testcol,testcol);
+		testcol+=30;
+	}
+	BigQueueSound(sfx[s],sfx_l[s],sfx_speed[s],&ready,0);
+}
+
+void game::showbottommarble(int w,int store)
+{
+	char *pgfx=gfx,*pbm=bm,*btab=bm+15400;
+	switch(w)
+	{
+		case 0:
+		{
+			for(int i=0;i<40;i++)
+			{
+				btab[i]=89;
+			}
+			break;
+		}
+		case 1:
+		{
+			for(int i=0;i<20;i++)
+			{
+				btab[i]=94;
+			}
+			btab[9]=95;
+			btab[10]=96;
+			for(;i<40;i++)
+			{
+				btab[i]=89;
+			}
+			btab[29]=97;
+			btab[30]=98;
+			break;
+		}
+		case 2:
+		{
+			for(int i=0;i<20;i++)
+				btab[i]=94;
+			for(;i<40;i++)
+				btab[i]=89;
+			break;
+		}
+	}
+	int ssi,ssi2,sds2;
+	ShowBottomMarble(bm+15400);
+	if(store)
+	{
+		asm {
+			push	ds
+			mov	ax,0xa000
+			mov	ds,ax
+			xor	si,si
+			les	di,pbm
+			cld
+			mov	cx,3840
+			rep	movsw
+			pop	ds
+		}
+	}
+}
+
+void game::crsrset()
+{
+	int j=0;
+	for(int i=0;i<2500&&scene[i]!=48;i++);
+	crsrpos=i;
+	if(i==2500)
+		error("No player on stage !");
+	if(scene[0]!=20)
+		error("Not a valid stage !");
+	if(oneplayer)
+	{
+		pos=i-260;
+		if(pos<0)
+		{
+			pos=i%50-5;
+			if(pos<0)
+				pos=0;
+		}
+		if(i%50<=5)
+			pos-=pos%50;
+		if(pos>1950)
+			pos=1950+pos%50;
+	}
+	else
+	{
+		for(;j<2500&&scene[j]!=52;j++);
+		if(j==2500)
+		{
+//			error("Two players expected !");
+			j=i+1;
+			scene[j]=52;
+		}
+		pos=i-254;
+		if(pos<0)
+		{
+			pos=i%50-3;
+			if(pos<0)
+				pos=0;
+		}
+		pos2=j-254;
+		if(pos2<0)
+		{
+			pos2=i%50-3;
+			if(pos2<0)
+				pos2=0;
+		}
+		crsrpos2=j;
+	}
+	scene[crsrpos]+=2;
+	if(!oneplayer)
+		scene[crsrpos2]+=2;
+	ocp1=crsrpos;
+	op1=pos;
+	ocp2=crsrpos2;
+	op2=pos2;
+}
+
+void game::crsrleft()
+{
+	int cpx=crsrpos%50,px=pos%50;
+	if(!cpx)
+		return;
+	crsrpos--;
+	if(!oneplayer)
+	{
+		if(cpx-px==4&&px)
+			pos--;
+		return;
+	}
+	if(cpx-px==5&&px)
+		pos--;
+}
+void game::crsrright()
+{
+	int cpx=crsrpos%50,px=pos%50;
+	if(cpx==49)
+		return;
+	crsrpos++;
+	if(!oneplayer)
+	{
+		if(cpx-px==4&&px!=41)
+			pos++;
+		return;
+	}
+	if(cpx-px==14&&px!=30)
+		pos++;
+}
+void game::crsrup()
+{
+	if(crsrpos<50)
+		return;
+	crsrpos-=50;
+	if(crsrpos-pos<205&&pos>=50)
+		pos-=50;
+}
+void game::crsrdown()
+{
+	if(crsrpos>2450)
+		return;
+	crsrpos+=50;
+	if(crsrpos-pos>=355&&pos<1950)
+		pos+=50;
+}
+
+void game::wait()
+{
+	static int shtmr=1;
+	waitoff
+//	if(!--shtmr)
+//	{
+//		shtmr=2;
+//		shoot();
+//		showbullets();
+//	}
+	char *pt,*pt2=t2;
+	for(int i=0;i<3;i++)
+	{
+		t=pushedkeytab();
+		pt=t;
+		asm {
+			push	ds
+			les	di,pt
+			lds	si,pt2
+			mov	al,1
+			xor	ah,ah
+			mov	cx,500 }
+		cikl: asm {
+			cmp	al,es:[di]
+			je	psd
+			cmp	al,ds:[si+500]
+			jne	cc
+			mov	ds:[si],ah }
+		cc:	asm {
+			inc	si
+			inc	di
+			loop	cikl
+			pop	ds
+			jmp	cont }
+		psd:	asm {
+			mov	ds:[si],al
+			jmp	cc }
+		cont:
+		t2[1094]=0;
+	}
+}
+
+void game::newlevel()
+{
+	stage++;
+	loadscene();
+	crsrset();
+}
+
+void game::cheats(char *t)
+{
+	if(t['t']&&t[K_F1])
+		((int *)scene)[1286]=0;
+	if(t[K_F10]&&t[K_F5]&&t[K_F1])
+		newlevel();
+	if(t['b']&&t[K_F5]&&t[K_F1])
+	{
+//		if(stage==50)
+//			return;
+		stage-=2;
+		newlevel();
+	}
+	if(t[K_F4]&&t[K_F3])
+	{
+		stage--;
+		newlevel();
+	}
+	if(t[K_F8])
+	{
+		oneplayer=(oneplayer ? 0 : 1);
+	}
+	if(t[K_F6]&&t['0'])
+	{
+		crsrpos=ocp1;
+		pos=op1;
+		scene[crsrpos]=48;
+		scene[2581]=1;
+	}
+	if(t[K_F6]&&t['2'])
+	{
+		crsrpos2=ocp2;
+		pos2=op2;
+		scene[crsrpos2]=52;
+		scene[2586]=1;
+	}
+	if(t['p']&&t['a']&&t['s'])
+	{
+		lives=lives2=5;
+		startplay(1);
+	}
+}
+
+void game::suicide(int p)
+{
+	scene[p]=79;
+	for(int i=0;i<9;i++)
+		if(scene[p+boxtab[i]]==5)
+			scene[p+boxtab[i]]=67;
+	if(SB)
+		soundfx(4,1);
+}
+
+extern void pause(int);
+
+int game::dash()
+{
+	DashASM(t2);
+	if(oneplayer)
+		showscape(pos);
+	else
+		showscape(pos,pos2);
+	for(int i=0;i<cfg[11];i++)
+		wait();
+	t=t2;
+	if(t[27])
+		return 0;
+	scene[2590]=t[cfg[1]];
+	scene[2591]=t[cfg[2]];
+	scene[2592]=t[cfg[3]];
+	scene[2593]=t[cfg[4]];
+	scene[2594]=t[cfg[5]];
+	scene[2595]=t[cfg[6]];
+	scene[2596]=t[cfg[7]];
+	scene[2597]=t[cfg[8]];
+	scene[2598]=t[cfg[9]];
+	scene[2599]=t[cfg[10]];
+	if(t[K_F10]&&t[cfg[1]]&&!dead)
+		suicide(crsrpos);
+	if(t[K_F1]&&t[cfg[6]]&&!dead2&&!oneplayer)
+		suicide(crsrpos2);
+//	if(t[K_F4])
+//		SHOOT(1);
+	if(cheaton)
+		cheats(t);
+	if(t['s']&&t['f']&&t['x'])
+		ready=1;
+	if(t['p'])
+	{
+		pause(0);
+		while(!t[' '])
+		{
+			pause(1);
+			t=pushedkeytab();
+		}
+		otreasure=treasure+10;
+		return 1;
+	}
+	guenwhyvar(scene);
+//	if(scene[2550]||scene[2555])
+//		soundfx(0);
+	static int bsfx=0;
+	static int bsfxtab[]={ 1,1,2,3,2,3,1,3,2,2,3,1,2,2,1,3,3,2,1,2,-1 };
+	if(SB)
+	{
+		if(scene[2551])
+		{
+			soundfx(bsfxtab[bsfx++],1);
+			if(bsfxtab[bsfx]==-1)
+				bsfx=0;
+			scene[2551]=0;
+		}
+		else
+		{
+			if(scene[2552])
+			{
+				soundfx(2,1);
+			}
+		}
+	}
+	if(oneplayer)
+	{
+		score=((int *)scene)[1285];
+		treasure=((int *)scene)[1286];
+		if(oscore!=score||otreasure!=treasure)
+		{
+			restoremarble();
+			shade8numprint(88,184,score,1,4,1,5);
+			shade8numprint(88,192,treasure,1,4,1,5);
+			oscore=score;
+			otreasure=treasure;
+		}
+		if(!scene[2582])
+		{
+			if(t[' '])
+			{
+				if(!die())
+				{
+					return 0;
+				}
+				else
+				{
+					startplay();
+					((int *)scene)[1285]=score;
+					oscore=score+1;
+				}
+			}
+			return 1;
+		}
+		switch(scene[2580])
+		{
+			case 1:
+				crsrup();
+				break;
+			case 2:
+				crsrright();
+				break;
+			case 3:
+				crsrdown();
+				break;
+			case 4:
+				crsrleft();
+				break;
+			case 5:
+				leveldone();
+				break;
+		}
+	}
+	else
+	{
+		treasure=((int *)scene)[1286];
+		treasure2=((int *)(scene+5))[1286];
+		score=((int *)scene)[1285];
+		score2=((int *)(scene+5))[1285];
+		if(treasure!=otreasure||treasure2!=otreasure2||
+			score!=oscore||score2!=oscore2)
+		{
+			if(score>=1000)
+			{
+				score-=750;
+				lives2++;
+				((int *)scene)[1285]=score;
+				startplay(1);
+			}
+			if(score2>=1000)
+			{
+				score2-=750;
+				lives++;
+				((int *)(scene+5))[1285]=score2;
+				startplay(1);
+			}
+			otreasure=treasure;
+			oscore=score;
+			oscore2=score2;
+			otreasure2=treasure2;
+			restoremarble();
+			shade8numprint(24,184,score2,0,4,1,4);
+			shade8numprint(24,192,treasure2,0,4,1,4);
+			shade8numprint(192+24,184,score,0,4,1,4);
+			shade8numprint(192+24,192,treasure,0,4,1,4);
+		}
+		if(!scene[2582])
+		{
+			switch(p2die(1,t))
+			{
+				case 0:
+					startplay();
+					return 1;
+				case 1:
+					break;
+				case 2:
+//					startplay(1);
+					break;
+			}
+			dead=1;
+		}
+		else
+		{
+			dead=0;
+		}
+		if(!scene[2587])
+		{
+			switch(p2die(2,t))
+			{
+				case 0:
+					startplay();
+					return 1;
+				case 1:
+					break;
+				case 2:
+//					startplay(1);
+					break;
+			}
+			dead2=1;
+		}
+		else
+		{
+			dead2=0;
+		}
+		switch(scene[2580])
+		{
+			case 1:
+				crsrup();
+				break;
+			case 2:
+				crsrright();
+				break;
+			case 3:
+				crsrdown();
+				break;
+			case 4:
+				crsrleft();
+				break;
+			case 5:
+				level2done(2);
+				return 1;
+		}
+		int tp=pos,tcp=crsrpos;
+		pos=pos2;
+		crsrpos=crsrpos2;
+		switch(scene[2585])
+		{
+			case 1:
+				crsrup();
+				break;
+			case 2:
+				crsrright();
+				break;
+			case 3:
+				crsrdown();
+				break;
+			case 4:
+				crsrleft();
+				break;
+			case 5:
+				level2done(1);
+				return 1;
+		}
+		pos2=pos;
+		crsrpos2=crsrpos;
+		pos=tp;
+		crsrpos=tcp;
+	}
+	return 1;
+}
+
+int shootborder[]={ 50,1,-50,-1,-1,50,1,-50 };
+int shootbounce[]={ 1,2,3,0,7,4,5,6 };
+int shootnext[]={ 6,7,4,5,2,3,0,1 };
+int shootitem[]={ 0,1,2,0,3,4,5,0,6,7,8,0,9,10,11,0,
+		2,1,0,0,5,4,3,0,8,7,6,0,11,10,9,0 };
+
+void game::SHOOT(int p)
+{
+	if(p==1)
+	{
+		Shoot1=1;
+		ShootPos1=crsrpos+1;
+		ShootPhaseTmr1=3;
+		ShootVX1=ShootVY1=2;
+		ShootX1=((ShootPos1%50)<<4)+2;
+		ShootY1=((ShootPos1/50)<<4)+10;
+		ShootXS1=0;
+	}
+}
+/*
+void game::shoot()
+{
+	if(Shoot1)
+	{
+		if(!ShootPhaseTmr1)
+		{
+			if(scene[ShootPos1+shootborder[ShootPhase1]])
+			{
+				ShootPhase1=shootbounce[ShootPhase1];
+			}
+			else
+			{
+				scene[ShootPos1]=0;
+				ShootPos1+=shootborder[ShootPhase1];
+				ShootPhase1=shootnext[ShootPhase1];
+			}
+			ShootPhaseTmr1=2;
+		}
+		scene[ShootPos1]=31;
+		int d=ShootPos1-pos2;
+		int sd=d%50;
+		if(d>0&&d<550&&sd>0&&sd<9)
+		{
+			PutOne(sd,d/50,shootitem[(ShootPhase1<<2)+ShootPhaseTmr1]);
+		}
+		d=ShootPos1-pos;
+		sd=d%50;
+		if(d>0&&d<550&&sd>0&&sd<9)
+		{
+			PutOne(sd+11,d/50,shootitem[(ShootPhase1<<2)+ShootPhaseTmr1]);
+		}
+		ShootPhaseTmr1--;
+	}
+} */
+
+char bulletgfx[]= { 0,1,1,0,1,1,1,1,1,1,1,1,0,1,1,0 };
+char cleargfx[]=  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
+void game::showbullets()
+{
+	static int ox1=0,oy1=0,ox2=0,oy2=0;
+	static int ox1b=0,oy1b=0,ox2b=0,oy2b=0;
+	if(Shoot1)
+	{
+		int d=ShootPos1-pos2;
+		int sd=d%50;
+		if(d>=0&&d<550&&sd>=0&&sd<9)
+		{
+			screenrestore(ox1,oy1,4,4,wbuff);
+			PutBullet(ox1=ShootX1-((pos2%50)<<4),oy1=ShootY1-((pos2/50)<<4),bulletgfx);
+		}
+		d=ShootPos1-pos;
+		sd=d%50;
+		if(d>=0&&d<550&&sd>=0&&sd<9)
+		{
+			screenrestore(ox1b,oy1b,4,4,wbuff);
+			PutBullet(ox1b=ShootX1-((pos%50)<<4)+176,oy1b=ShootY1-((pos/50)<<4),bulletgfx);
+		}
+	}
+}
+
+void game::shoot()
+{
+	if(Shoot1)
+	{
+		ShootX1+=ShootVX1;
+		ShootY1+=ShootVY1;
+		if(!--ShootPhaseTmr1)
+		{
+			ShootPhaseTmr1=4;
+			if(scene[ShootPos1=(ShootX1>>4)+(ShootY1>>4)*50])
+			{
+				if(ShootXS1)
+				{
+					ShootVX1=-ShootVX1;
+					ShootX1+=ShootVX1<<1;
+				}
+				else
+				{
+					ShootVY1=-ShootVY1;
+					ShootY1+=ShootVY1<<1;
+				}
+			}
+			ShootXS1=!ShootXS1;
+		}
+	}
+}
+
+int game::p2die(int p,char *t)
+{
+	if(p==1)
+	{
+		if(!dead)
+		{
+	soundfx(6,0);
+			*(int *)(scene+2575)+=500;
+			if(scene[crsrpos]&&scene[crsrpos]>=56)
+				scene[crsrpos]=3;
+			if(!lives2)
+			{
+				if(score>=750)
+				{
+					*(int *)(scene+2570)-=750;
+					return 1;
+				}
+				won(2);
+				return 0;
+			}
+			lives2--;
+			startplay(1);
+			return 1;
+		}
+		if(t[cfg[4]]&&t[cfg[2]])
+		{
+			crsrpos=ocp1;
+			pos=op1;
+		}
+		if(t[cfg[1]]&&t[cfg[3]]&&score>=100)
+		{
+//			score-=100;
+			((int *)scene)[1285]-=100;
+			char a=scene[crsrpos2];
+			crsrpos=ocp1;
+			pos=op1;
+			for(int j=0;j<9;j++)
+				scene[crsrpos+boxtab[j]]=1;
+			scene[crsrpos-50]=5;
+			scene[crsrpos2]=a;
+		}
+		if(t[cfg[5]])
+		{
+			crsrpos=ocp1;
+			pos=op1;
+			scene[crsrpos]=50;
+			scene[2581]=1;
+			return 2;
+		}
+		return 1;
+	}
+	if(!dead2)
+	{
+	soundfx(6,0);
+		if(scene[crsrpos2]&&scene[crsrpos2]>=56)
+			scene[crsrpos2]=3;
+		*(int *)(scene+2570)+=500;
+		if(!lives)
+		{
+			if(score2>=750)
+			{
+				*(int *)(scene+2575)-=750;
+				return 1;
+			}
+			won(1);
+			return 0;
+		}
+		lives--;
+		startplay(1);
+		return 1;
+	}
+	if(t[cfg[9]]&&t[cfg[7]])
+	{
+		crsrpos2=ocp2;
+		pos2=op2;
+	}
+	if(t[cfg[6]]&&t[cfg[8]]&&score2>=100)
+	{
+		char a=scene[crsrpos];
+//		score2-=100;
+		((int *)(scene+5))[1285]-=100;
+		crsrpos2=ocp2;
+		pos2=op2;
+		for(int j=0;j<9;j++)
+			scene[crsrpos2+boxtab[j]]=1;
+		scene[crsrpos2-50]=5;
+		scene[crsrpos]=a;
+	}
+	if(t[cfg[10]])
+	{
+		crsrpos2=ocp2;
+		pos2=op2;
+		scene[crsrpos2]=54;
+		scene[2586]=1;
+		return 2;
+	}
+	return 1;
+}
+
+void game::won(int p)
+{
+	showmarble();
+	if(SB)
+		soundfx(5,1);
+	char *winner;
+	score=score2=0;
+	lives=lives2=5;
+	if(p==2)
+	{
+		winner="player one !";
+		victory++;
+		score2=250;
+	}
+	else
+	{
+		winner="player two !";
+		victory2++;
+		score=250;
+	}
+	shadeprint(60,10,"congratulation",3,1);
+	shadeprint(75,28,winner,3,1);
+	shadeprint(90,100,"victory !!!",4,1);
+	shadeprint(3,180,"press space to continue",3,1);
+	char *a=pushedkeytab();
+	while(!a[' '])
+		a=pushedkeytab();
+}
+
+int game::die()
+{
+	lives--;
+	if(lives)
+		return 1;
+	if(score>=750)
+	{
+		score-=750;
+		lives++;
+		return 1;
+	}
+	loadgogfx();
+	soundfx(6,1);
+	char far *pgfx=gfx;
+	asm {
+		push	ds
+		mov	ax,0xa000
+		mov	es,ax
+		lds	si,pgfx
+		xor	di,di
+		cld
+		mov	cx,32000
+		rep	movsw
+		pop	ds
+	}
+	loadgfx();
+	char *a=pushedkeytab();
+	while(a[' '])
+		a=pushedkeytab();
+	while(!a[' '])
+		a=pushedkeytab();
+	return 0;
+}
+
+void game::level2done(int p)
+{
+	showmarble();
+	if(SB)
+		soundfx(5,1);
+	stage++;
+	score=score2=0;
+	lives=lives2=5;
+	char *winner;
+	if(p==1)
+	{
+		victory++;
+		winner="player one !";
+	}
+	else
+	{
+		victory2++;
+		winner="player two !";
+	}
+	shadeprint(60,10,"congratulation",3,1);
+	shadeprint(75,28,winner,3,1);
+	shadeprint(84,54,"LEVEL DONE !",3,1);
+	shadeprint(5,80,"NEXT LEVEL :",3,1);
+	shadeprint(5,100,names+stage*40+12,3,1);
+	shadenumprint(shadeprint(5,120,"code : ",3,1),120,~(codes[stage]+1995),1,3,1,5);
+	shadeprint(5,150,"play on next level ?",3,1);
+	char *a=pushedkeytab();
+	while(a['y']||a['n'])
+		a=pushedkeytab();
+	while(!a['y']&&!a['n'])
+		a=pushedkeytab();
+	if(a['n'])
+		stage--;
+	startplay();
+}
+
+void game::leveldone()
+{
+	stage++;
+	lives++;
+	if(SB)
+		soundfx(5,1);
+	showmarble();
+	shadeprint(4<<4,10,"CONGRATULATION !",3,1);
+	shadeprint(6<<4,30,"LEVEL DONE !",3,1);
+	shadeprint(5,70,"NEXT LEVEL :",3,1);
+	shadeprint(5,90,names+stage*40+12,3,1);
+	int ex;
+	shadenumprint(ex=shadeprint(5,110,"score : ",3,1),110,score,1,3,1,5);
+	char *a=pushedkeytab();
+	if(score>=750)
+	{
+		shadeprint(5,130,"code cost 750 points.",3,1);
+		shadeprint(5,150,"do you buy ?",3,1);
+		while(a['y']||a['n'])
+			a=pushedkeytab();
+		while(!a['y']&&!a['n'])
+			a=pushedkeytab();
+		if(a['y'])
+		{
+			shadenumprint(ex,110,score,1,3,0,5);
+			score-=750;
+			shadenumprint(ex,110,score,1,3,1,5);
+			shadeprint(5,130,"code cost 750 points.",3,0);
+			shadeprint(5,150,"do you buy ?",3,0);
+			shadenumprint(shadeprint(5,130,"code : ",3,1),130,~(codes[stage]+1995),1,3,1,5);
+		}
+		else
+		{
+			shadeprint(5,130,"code cost 750 points.",3,0);
+			shadeprint(5,150,"do you buy ?",3,0);
+			shadeprint(3,130,"press space to continue",3,1);
+		}
+	}
+	else
+	{
+		shadeprint(5,130,"code cost 750 points !",3,1);
+		shadeprint(3,180,"press space to continue",3,1);
+	}
+	while(!a[' '])
+		a=pushedkeytab();
+	startplay();
+}
+
+void game::startplay(int noload)
+{
+	if(oneplayer)
+	{
+		showbottommarble(2,0);
+		shade8print(0,184,"Score    :",4,1);
+		shade8print(0,192,"Treasure :",4,1);
+		shade8print(230,184,"Lives : ",4,1);
+		shade8print(230,192,"Level : ",4,1);
+		shade8numprint(302-8,184,lives,0,4,1,2);
+		shade8numprint(302-8,192,stage,0,4,1,2);
+		storebottommarble();
+	}
+	else
+	{
+		showbottommarble(1,0);
+		shade8print(0,184,"S:",4,1);
+		shade8print(0,192,"T:",4,1);
+		shade8print(80,184,"L:",4,1);
+		shade8numprint(80+8*3,184,lives,0,4,1,2);
+		shade8print(80,192,"V:",4,1);
+		shade8numprint(80+8*3,192,victory,0,4,1,2);
+		shade8print(192,184,"S:",4,1);
+		shade8print(192,192,"T:",4,1);
+		shade8print(272,184,"L:",4,1);
+		shade8numprint(272+8*3,184,lives2,0,4,1,2);
+		shade8print(272,192,"V:",4,1);
+		shade8numprint(272+8*3,192,victory2,0,4,1,2);
+		storebottommarble();
+		Shoot1=Shoot2=0;
+	}
+	if(noload)
+	{
+		oscore=score+9;
+		return;
+	}
+	loadscene();
+	((int *)scene)[1285]=score;
+	*((int *)(scene+2575))=score2;
+	scene[2550]=oneplayer;
+	crsrset();
+	pushedkeytab(1);
+}
+
+void game::scroll()
+{
+	static int scrpos=0,scrx=21;
+	int *width;
+	char *pbm=bm;
+	if(!NoScroll)
+	{
+		ScrollerASM();
+		width=advshadeprint(scrx,scrtxt+scrpos,scrtab,30,bm+7680+320*7);
+		asm {
+			push	ds
+			lds	si,pbm
+			add	si,7680+320*8
+			mov	ax,0xa000
+			mov	es,ax
+			mov	di,56320+320*8  // -320
+			mov	cx,3840-160*8
+			cld }
+		waitoff
+		asm {
+			rep	movsw
+			pop	ds
+		}
+	}
+	else
+	{
+		woff();
+	}
+//	The Starfield is also here :
+	static int sftmr=0,sfpos=0;
+	OldStyleStarfield(win,txtpic+sfpos,320*21-1,sftmr++);
+	if(sftmr==320*2+42*2)
+	{
+		sfpos+=320*24;
+		sftmr=0;
+		if(sfpos==7*320*24)
+			sfpos=0;
+	}
+	if(!NoScroll)
+	{
+		scrx--;
+		if(scrx+width[toupper(scrtxt[scrpos])]==21)
+		{
+			scrpos++;
+			if(scrtxt[scrpos+30]=='@'||scrtxt[scrpos+30]==0)
+				scrpos=0;
+			scrx=21;
+		}
+	}
+}
+
+extern "C"
+{
+	void showring(char far *,char far *,char far *,int,int);
+	void ringcolor(char far *);
+}
+
+int game::opsel(char *pkt,int forcedfirst)
+{
+	static int first=1,op=1,up=0,down=0,bpos=61;
+	static char *optxt[6];
+	if(forcedfirst)
+	{
+		first=1;op=1;up=0;down=0;bpos=61;
+		if((coords=(char *)farmalloc(28160))==NULL)
+			nem();
+		int fh=open("ring.tab",O_RDONLY|O_BINARY);
+		if(fh==-1)
+		{
+			setgfxmode(3);
+			cout << "ring.tab not found !";
+			exit(0);
+		}
+		read(fh,coords,28160);
+//		loadrhx(fh,coords,"ring");
+		close(fh);
+	}
+	if(first||forcedfirst)
+	{
+		first=0;
+		optxt[0]=" ";
+		optxt[1]="one player game";
+		optxt[2]="two player war";
+ //		optxt[5]="credits";
+		optxt[3]="type code";
+		optxt[4]="setup game options";
+		optxt[5]="quit to dos";
+#define MD_OPNUM 5
+		clearscrbuff(wbuff,0);
+		setprintdestination(wbuff+61*320);
+		for(int i=0;i<MD_OPNUM;i++)
+			shade8print(0,(i<<3)+i,optxt[i+1],0,0);
+		ringcolor(wbuff+6400);
+		showring(coords,wbuff+6400,NULL,160,88);
+	}
+	if(pkt[K_UP]&&!up)
+	{
+		if(op==MD_OPNUM)
+			return 0;
+		up=9;
+		op++;
+	}
+	if(up)
+	{
+		blockscroll(0,bpos---1,160,MD_OPNUM*9+2,wbuff,BS_UP);
+		ringcolor(wbuff+6400);
+		showring(coords,wbuff+6400,NULL,160,88);
+		up--;
+		return 0;
+	}
+	if(pkt[K_DOWN]&&!down)
+	{
+		if(op==1)
+			return 0;
+		down=9;
+		op--;
+	}
+	if(down)
+	{
+		blockscroll(0,bpos++-1,160,MD_OPNUM*9+2,wbuff,BS_DOWN);
+		ringcolor(wbuff+6400);
+		showring(coords,wbuff+6400,NULL,160,88);
+		down--;
+		return 0;
+	}
+	if(pkt[' ']||pkt[K_ENTER])
+		return op;
+	if(pkt[K_ESC])
+		return 5;
+	return 0;
+}
+
+extern int xaosdots(int,int,int,int,int);
+
+int game::typecode()
+{
+	quick256cls(0);
+	set256palette(1,0,0,0);
+	showbottommarble(2,0);
+	shadeprint(64,183,"type the code !",3,1);
+	int pixpos=70,cpos=0,code=0,opp,dsum=0;
+	char txt[]=" ";
+	char *a=pushedkeytab();
+	while(cpos!=5)
+	{
+		for(int i='0';i<='9'+1&&!a[i];i++);
+		if(i<='9')
+		{
+			opp=pixpos;
+			txt[0]=i;
+			shadeprint(pixpos,80,txt,0,1);
+			pixpos+=35;
+			code*=10;
+			code+=i-'0';
+			cpos++;
+			dsum+=xaosdots(opp,80,16,16,10);
+			pushedkeytab(0);
+			while(a[i])
+			{
+				woff();
+				a=pushedkeytab();
+			}
+		}
+		woff();
+		a=pushedkeytab();
+	}
+	code=~(code+1995);
+	for(int l=0;l<100&&codes[l]!=code;l++);
+	if(l==100)
+		return 0;
+	return l;
+}
+
+void game::makesfdata()
+{
+	for(int i=0;i<42;i++)
+	{
+		((int *)win)[i]=random(320)+(i<21 ? i*320 : (i-21)*320);
+	}
+}
+
+int game::credits()
+{
+	quick256cls(0);
+	showbottommarble(2,0);
+	storebottommarble();
+	loadlogo();
+	Logo2Pic(wbuff);
+	makesfdata();
+	loadtxtpic();
+	MarbleCut();
+	char *a=pushedkeytab();
+	int option;
+	opsel(a,1);
+	while(a[K_ESC]||a[' '])
+	{
+		woff();   //
+		a=pushedkeytab();
+	}
+	while(!(option=opsel(a,0)))
+	{
+		scroll();
+		a=pushedkeytab();
+	}
+	FarCoreLeft2=farcoreleft();
+	freecoords();
+	freetxtpic();
+	setprintdestination(NULL);
+	switch(option)
+	{
+		case 1:
+			oneplayer=1;
+			lives=3;
+			stage=comode=0;
+			break;
+		case 2:
+			oneplayer=comode=0;
+			stage=50;
+			lives=lives2=5;
+			victory=victory2=0;
+			break;
+		case 3:
+			stage=typecode();
+			if(!stage)
+				return 2;
+			if(stage>=50)
+			{
+				oneplayer=0;
+				comode=1;
+			}
+			else
+			{
+				oneplayer=1;
+			}
+			lives=lives2=5;
+			victory=victory2=0;
+			break;
+		case 4:
+			setup();
+			return 2;
+		case 5:
+			return 0;
+	}
+	score=score2=dead=dead2=0;
+	setexternvars();
+	startplay();
+	return 1;
+}
+
+int game::getpk()
+{
+	int i=0;
+	char *a;
+	pushedkeytab(1);
+//	do
+ //	{
+	woff();
+	pushedkeytab();  // 1 is not good !
+	while(i!=400)
+	{
+		woff();
+		a=pushedkeytab();
+		for(i=0;i<400&&!a[i];i++);
+	}
+	while(i==400)
+	{
+		woff();
+		a=pushedkeytab();
+		for(i=1;i<400&&!a[i];i++);
+	}
+//	}
+//	while(a[K_DOWN]||a[K_UP]||a[K_LEFT]||a[K_RIGHT]);
+/*	if(a[K_DOWN])
+		return K_DOWN;
+	if(a[K_UP])
+		return K_UP;
+	if(a[K_LEFT])
+		return K_LEFT;
+	if(a[K_RIGHT])
+		return K_RIGHT;        */
+	return i;
+}
+
+void game::getkeys(int w)
+{
+	showmarble();
+	if(w==1)
+		shadeprint(10,10,"player one, push key :",4,1);
+	else
+		shadeprint(10,10,"player two, push key :",4,1);
+	int cpos=(w==1 ? 1 : 6);
+	shade8print(8,178,"IMPORTANT: do not use the crsr keys!!!",4,1);
+	shade8print(8,188,"   --- Sorry!",4,1);
+	shadeprint(15,50,"for up",3,1);
+	cfg[cpos]=getpk();
+	shadeprint(15,70,"for right",3,1);
+	do
+	{
+		cfg[cpos+1]=getpk();
+	}
+	while(cfg[cpos+1]==cfg[cpos]);
+	shadeprint(15,90,"for down",3,1);
+	do
+	{
+		cfg[cpos+2]=getpk();
+	}
+	while(cfg[cpos+2]==cfg[cpos]||cfg[cpos+2]==cfg[cpos+1]);
+	shadeprint(15,110,"for left",3,1);
+	do
+	{
+		cfg[cpos+3]=getpk();
+	}
+	while(cfg[cpos+3]==cfg[cpos]||cfg[cpos+3]==cfg[cpos+2]||cfg[cpos+3]
+		==cfg[cpos+1]);
+	shadeprint(15,130,"for fire",3,1);
+	do
+	{
+		cfg[cpos+4]=getpk();
+	}
+	while(cfg[cpos+4]==cfg[cpos]||cfg[cpos+4]==cfg[cpos+1]||cfg[cpos+4]
+		==cfg[cpos+2]||cfg[cpos+4]==cfg[cpos+3]);
+}
+
+void game::setup()
+{
+	char *a=pushedkeytab();
+	for(;!a['m'];)
+	{
+		showmarble();
+		shadeprint(60,10,"setup screen",4,1);
+		shadeprint(5,40,"select option :",3,1);
+		shadeprint(5,60,"1 - keys of player 1",3,1);
+		shadeprint(5,80,"2 - keys of player 2",3,1);
+		int spdpos=shadeprint(5,100,"+/- - speed : ",3,1),spd=20-cfg[11];
+		shadenumprint(spdpos,100,spd,0,3,1,2);
+		shadeprint(5,120,"s - save setup",3,1);
+		shadeprint(5,140,"m - main menu",3,1);
+		char *a=pushedkeytab();
+		while(!a['m'])
+		{
+			woff();
+			a=pushedkeytab();
+			if(a['='])
+			{
+				shadenumprint(spdpos,100,spd,0,3,0,2);
+				spd++;
+				if(spd==21)
+					spd=0;
+				shadenumprint(spdpos,100,spd,0,3,1,2);
+				while(a['='])
+				{
+					woff();
+					a=pushedkeytab();
+				}
+			}
+			if(a['-'])
+			{
+				shadenumprint(spdpos,100,spd,0,3,0,2);
+				spd--;
+				if(spd==0)
+					spd=20;
+				shadenumprint(spdpos,100,spd,0,3,1,2);
+				while(a['-'])
+				{
+					woff();
+					a=pushedkeytab();
+				}
+			}
+			if(a['2'])
+			{
+				getkeys(0);
+				break;
+			}
+			if(a['1'])
+			{
+				getkeys(1);
+				break;
+			}
+			if(a['s'])
+			{
+				cfg[11]=20-spd;
+				saveconfig();
+			}
+		}
+	}
+//	cfg[11]=20-spd; // Why it is commented ???
+}
+
+extern void intro();
+
+extern "C"
+{
+	void	Buf2Pic(char far *);
+};
+
+void CompetitionText()
+{
+	char *buf,*buf2,*buf3;
+	if((buf=(char *)farmalloc(64000))==NULL)
+	{
+		cout << "CompetitionText Failed !\n";
+		return;
+	}
+	if((buf2=(char *)farmalloc(64000))==NULL)
+	{
+		cout << "CompetitionText Failed !\n";
+		return;
+	}
+	if((buf3=(char *)farmalloc(64000))==NULL)
+	{
+		cout << "CompetitionText Failed !\n";
+		return;
+	}
+	char *gfx_name="magidash.gfx";
+	int fh=open(gfx_name,O_RDONLY|O_BINARY);
+	if(fh==-1)
+	{
+		cout << gfx_name << " not found !\n\n";
+		return;
+	}
+	if(!loadrmx(fh,buf,"enjoy"))
+	{
+		cout << "Packer error !\n";
+		return;
+	}
+	loadrmx(fh,buf2,"and");
+	loadrmx(fh,buf3,"vote");
+	close(fh);
+	setgfxmode(19);
+	for(int i=0;i<30;i++) woff();
+	set256palette(1,0,0,0);
+	set256palette(2,0,0,0);
+	set256palette(3,0,0,0);
+	Buf2Pic(buf);
+#define COL_BORDER 30
+#define COL_START 60
+	int c1=COL_START,c2=COL_START,c3=COL_START;
+	while(c3)
+	{
+		waitoff
+		set256palette(1,c1,c1,c1);
+		set256palette(2,c2,c2,c2);
+		set256palette(3,c3,c3,c3);
+		if(c1==COL_BORDER)
+		{
+			Buf2Pic(buf2);
+		}
+		if(c1<COL_BORDER)
+		{
+			if(c2==COL_BORDER)
+				Buf2Pic(buf3);
+			if(c2<COL_BORDER)
+			{
+				c3--;
+			}
+			if(c2)
+				c2--;
+		}
+		if(c1)
+			c1--;
+	}
+	farfree(buf);
+	farfree(buf2);
+	farfree(buf3);
+	for(i=0;i<30;i++) woff();
+}
+
+void main(int adb,char **arg)
+{
+		char *sfx,ready;
+	unsigned size;
+	int i=1;
+	int sok=1;
+	while(i<adb)
+	{
+		if(!strcmp(arg[i],"nointro")) NoIntro=1;
+		if(!strcmp(arg[i],"noscroll")) NoScroll=1;
+		if(!strcmp(arg[i],"freemem")) FreeMem=1;
+		if(!strcmp(arg[i],"nosfx")) SB=0;
+		if(!strcmp(arg[i],"soundtest")) soundtest=1;
+		if(!strcmp(arg[i],"sok")) sok=0;
+		if(!strcmp(arg[i],"purge")) purge=1;
+		if(!strcmp(arg[i],"magic")) cheaton=1;
+		if(!strcmp(arg[i],"sd1")) Debug=1;
+		if(!strcmp(arg[i],"sd2")) Debug=2;
+		if(!strcmp(arg[i],"sd3")) Debug=3;
+		if(!strcmp(arg[i],"sd4")) Debug=4;
+		if(!strcmp(arg[i],"freq"))
+		{
+			sfx_speed[1]=8000;
+			sfx_speed[2]=8000;
+			sfx_speed[3]=8000;
+		}
+		if(!strcmp(arg[i],"comptxt"))
+			CompetitionText();
+		i++;
+	}
+	if(!DetectSB()||!SB)
+	{
+		cout << "Sound Blaster not detected !!!";
+		SB=0;
+	}
+	else
+	{
+		int fh=open("sounds.rhx",O_RDONLY|O_BINARY);
+		if(fh==-1)
+		{
+			cout << "SFX not found !\n";
+			RemoveIrq();
+			return;
+		}
+		char *sn="sounds_ok";
+		size=rhxlength(fh,sn);
+		if((sfx=(char *)farmalloc(size))==NULL)
+		{
+			RemoveIrq();
+			return;
+		}
+		loadrhx(fh,sfx,sn);
+		close(fh);
+//		char ready;
+		CorrectSFX(sfx,size);
+		SpeakerOn();
+		if(sok)
+			BigQueueSound(sfx,size,8000,&ready,0);
+	}
+
+/*	Tmodule test("march.mod");
+	unsigned bufsize=32000; char *mbuf,*buf1,*buf2;
+	if((mbuf=(char *)farmalloc(bufsize*2+65536l))==NULL)
+	{
+		cout << "Not enough memory !\n";
+		RemoveIrq();
+		return;
+	}
+	SpeakerOn();
+	buf1=mbuf;
+	long l=FP_SEG(mbuf)*16l+FP_OFF(mbuf);
+	long l2=l+2l*bufsize;
+	unsigned p1=(l&0xf0000l)>>4,p2=(l2&0xf0000l)>>4;
+	if(p1!=p2)
+	{
+		buf1=(char far *)MK_FP(p2,0);
+	}
+	else
+	{
+		buf1=mbuf;
+	}
+	buf2=buf1+bufsize;
+
+	InitBackgroundPlay(buf1,buf2,bufsize);
+	SetupPlayerInterrupt();
+
+*/	if(!NoIntro)
+	{
+		intro();
+		getch();
+	}
+//	test.play();
+//	test.sfx(sfx,size-1,&ready,0,22000);
+//	while(ready);
+//     test.sfx(sfx,size-1,&ready,0,22000);
+//	BigQueueSound(sfx,size,11000,&ready,50);
+
+	game md;
+	int c;
+	while(c=md.credits())
+		if(c!=2)
+			while(md.dash());
+//	RestorePlayerInterrupt();
+//	SpeakerOff();
+//	farfree(mbuf);
+	if(SB)
+	{
+		RemoveIrq();
+		farfree(sfx);
+	}
+}

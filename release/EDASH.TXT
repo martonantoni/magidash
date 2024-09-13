@@ -1,0 +1,26 @@
+del - delete scenario, put a grid of wall to it
+left,right,up,down - move cursor
+home - cursor at the begining of the line
+end  - cursor at the end of the line
+pgup - cursor in the first line
+pgdn - cursor in the last line
+\,ins - step right after put on/off
+* - cursor at the middle of line
+treasures to collect :
+	. - -1
+	, - +1
+	> - -10
+	< - +10
+	? - set to about maximum on level
+f2 - save level
+f3 - load level
+f5 - plus mode on/off
+f6 - specials
+	f2 - save codes & names
+	f3 - load codes & names
+	n - set name
+	c - set code
+	s - swap this level
+	t - transfer this level
+	ins - swap/transfer with/to this level
+	g - edit this level

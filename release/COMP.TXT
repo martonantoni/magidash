@@ -1,0 +1,21 @@
+This is my(Remetix) entry for the game developing contest.
+Category: Game by team (Had I selected it well?)
+
+Coded by Remetix
+	email: remetix@hal2000.hal.vein.hu
+	surface mail:  
+		Antoni Marton 
+		Csutora utca 6.
+		Budapest
+		HUNGARY	
+Audio system coded by MAXX
+	email: dmarx@goliat.eik.bme.hu
+Graphics by Klox & Remetix
+
+Magidash needs 386+ (enough fast on a 486dlc33), 570k conv. memory, VGA, [SB]
+
+I finished coding this game in june of 1995. 
+Please contact us via both email addresses, because I will go skiing...
+
+
+AND, sorry for my bad english!
