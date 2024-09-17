@@ -6,7 +6,7 @@ DOS game I wrote in 1995
 
 Use DosBox to run the game.  The game is in the `release` folder. 
 
-If you ware unfamiliar with DosBox: 
+If you are unfamiliar with DosBox: 
 * mount the folder where the game is located to (for example )the C drive, 
 * switch to that drive.
 * run the game (executable name: magidash.exe). You can enable cheats (recommended) with the `magic` command line argument.
