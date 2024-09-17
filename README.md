@@ -47,3 +47,15 @@ This activates a few keyboard combinations:
 * P + A + S: give both players 5 lives
 * F6 + 0: Player 1 gets an extra figure to control (at starting location)
 * F6 + 2: Player 2 gets an extra figure to control (at starting location)
+
+# Screenshots
+
+![main menu](screenshots/main_menu.png)
+
+![single player mode](screenshots/1_player.png)
+
+![single player mode](screenshots/1_player2.png)
+
+![single player mode](screenshots/1_player3.png)
+
+![two player mode](screenshots/2_player.png)
