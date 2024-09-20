@@ -7,7 +7,7 @@ DOS game I wrote in 1995
 Use DosBox to run the game.  The game is in the `release` folder. 
 
 If you are unfamiliar with DosBox: 
-* mount the folder where the game is located to (for example )the C drive, 
+* mount the folder where the game is located to (for example) the C drive, 
 * switch to that drive.
 * run the game (executable name: magidash.exe). You can enable cheats (recommended) with the `magic` command line argument.
  
@@ -17,7 +17,7 @@ c:
 magidash magic
 ```
 
-By default DosBox is emulating a CPU which is slightly slower than what I had 1995. As a result the game might be a bit slow, you can speed it up by pressing `CTRL-F12` to increase the cycles. Around 15k cycles should be enough.
+By default DosBox is emulating a CPU which is slightly slower than what I had in 1995. As a result the game might be a bit slow, you can speed it up by pressing `CTRL-F12` to increase the cycles. Around 15k cycles should be enough.
 
 ## Controls
 
